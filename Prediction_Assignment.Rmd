@@ -1,0 +1,102 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+Quantify activity assignment
+============================
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Synopsis
+
+Jawbone Up, Nike FuelBand, and Fitbit are part of the quantified self movement ??? a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. In this project, data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants who performed barbell lifts correctly and incorrectly in 5 different ways is used. The goal is to predict the manner in which they did the exercise in a testing data set. The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. 
+
+The assignment consists in building a model, justify the use of cross validation, discuss the expected out of sample error. The prediction model will be used to predict 20 test cases.
+
+## Data Processing 
+The data comes in the form of a comma-separated-value file and it is separated into a pml-training and pml-testing set. It has been downloaded directly from the provided *url* and imported to R using read.csv. 
+```{r cache = TRUE}
+urltrain = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+filetrain = "pmt-training.csv"
+if (!file.exists(filetrain)){
+  download.file(urltrain,filetrain)
+}
+if (!exists("training")){
+  training <- read.csv(filetrain)
+}
+urltest = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+filetest = "pmt-testing.csv"
+if (!file.exists(filetest)){
+  download.file(urltest,filetest)
+}
+if (!exists("testdata")){
+  testdata <- read.csv(filetest)
+}
+```
+The classe of the pml-testing dataset is predicted using the developed model. The pml-training dataset is splitted into a training and cross-validation dataset containing the 70% and the 30% of the data, respectively. The cross validation dataset is used to estimate the out of sample error.
+```{r create data sets}
+library(caret)
+inTrain <- createDataPartition(y=training$classe,p=0.70, list=FALSE)
+cvdata <- training[-inTrain,] 
+traindata <- training[inTrain,]
+```
+The variables with NA and empty ("") values are not considered for the model to prevent problems in the training algorithm. 
+```{r}
+select_columns <- function(x){if (sum(is.na(x))>0 || sum(x=="")>0) {return(FALSE)} else {return(TRUE)}}
+column_select <- data.frame(sapply(traindata, select_columns))[,1]
+traindataPP <- traindata[,column_select]
+```
+The resulting dataset has `r dim(traindataPP)[1]` entries of `r dim(traindata)[2]` variables, from which `r table(sapply(traindataPP,is.double))[2]` are floats, `r table(sapply(traindataPP,is.integer))[2]` and `r table(sapply(traindataPP,is.factor))[2]` factors. A simple decision tree is used first and then it will be shown that a tree bagging model improves drammatically the accuracy of the prediction. The data is first preprocessed by centering and scaling it.
+
+## Results 
+### Decission models
+First a simple decision tree is considered
+```{r rpart, cache=TRUE}
+set.seed(13752)
+modelFit <- train(classe ~ ., data=traindataPP, preProc = c("center","scale"), method="rpart")
+modelFit
+```
+The reached accuracy is `r modelFit$results[1,2]` but it can be improved using a bagging technique
+```{r treebag, cache=TRUE}
+modelFit2 <- train(classe ~ ., data=traindataPP, preProc = c("center", "scale"), method="treebag")
+modelFit2
+```
+The accuracy `r modelFit2$results[1,2]` is very good and it is not necessary using more sophisticated models like random forests or boosting models.
+
+### Out of sample error
+The out of sample error is estimated using the filtered cross-validation data
+```{r cross validation data}
+cvdataPP <- cvdata[, column_select]
+```
+The predicted data is calculated for the single decision tree
+```{r predict rpart}
+predictdata <- predict(modelFit, cvdataPP)
+```
+and the bagged tree model
+```{r predict bagged tree}
+predictdata2 <- predict(modelFit2, cvdataPP)
+```
+Subsequently the out of sample error can be obtained from the accuracy values of the confusion matrix for the first 
+```{r out of sample error rpart}
+confmat <- confusionMatrix(predictdata, cvdataPP$classe)
+confmat$overall[1]
+```
+
+and the second model
+```{r out of sample error treebag}
+confmat2 <- confusionMatrix(predictdata2, cvdataPP$classe)
+confmat2$overall[1]
+```
+
+## Prediction
+Finally, the bagged tree model is used to predict the values of the 20 test cases from the "pmt-testing.csv" file. 
+```{r predict test data}
+testdataPP <- testdata[, column_select]
+predictdata3 <- predict(modelFit2, testdataPP)
+predictdata3
+```
+## Conclusions
+The bagged tree model has an out of sample accuracy of almost unity. It is then almost as good as it can be. When applied to the test data the result is A for all the entries. More sophisticated methods would hardly provide any further improvement and they would be computationally more intensive.
