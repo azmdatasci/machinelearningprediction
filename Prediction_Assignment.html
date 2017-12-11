@@ -152,11 +152,13 @@ if (!exists(&quot;testdata&quot;)){
 <pre class="r"><code>inTrain &lt;- createDataPartition(y=training$classe,p=0.70, list=FALSE)
 cvdata &lt;- training[-inTrain,] 
 traindata &lt;- training[inTrain,]</code></pre>
-<p>The variables with NA and empty (“”) values are not considered for the model to prevent problems in the training algorithm.</p>
+<p>The variables with NA and empty (“”) values are not considered for the model to prevent problems in the training algorithm. In addition, timestamp variables, window variables and X variable are removed because they do not provide information about the activity.</p>
 <pre class="r"><code>select_columns &lt;- function(x){if (sum(is.na(x))&gt;0 || sum(x==&quot;&quot;)&gt;0) {return(FALSE)} else {return(TRUE)}}
-column_select &lt;- data.frame(sapply(traindata, select_columns))[,1]
+column_select1 &lt;- data.frame(sapply(traindata, select_columns))[,1]
+column_select2 &lt;- !grepl(&quot;X|timestamp|window&quot;,names(training))
+column_select &lt;- column_select1 &amp; column_select2
 traindataPP &lt;- traindata[,column_select]</code></pre>
-<p>The resulting dataset has 13737 entries of 160 variables, from which 27 are floats, 29 and 4 factors. A simple decision tree is used first and then it will be shown that a tree bagging model improves drammatically the accuracy of the prediction. The data is first preprocessed by centering and scaling it.</p>
+<p>The resulting dataset has 13737 entries of 54 variables, from which 27 are floats, 25 and 2 factors. A simple decision tree is used first and then it will be shown that a tree bagging model improves drammatically the accuracy of the prediction. The data is first preprocessed by centering and scaling it.</p>
 </div>
 <div id="results" class="section level2">
 <h2>Results</h2>
@@ -164,71 +166,100 @@ traindataPP &lt;- traindata[,column_select]</code></pre>
 <h3>Decission models</h3>
 <p>First a simple decision tree is considered</p>
 <pre class="r"><code>set.seed(13752)
-modelFit &lt;- train(classe ~ ., data=traindataPP, preProc = c(&quot;center&quot;,&quot;scale&quot;), method=&quot;rpart&quot;)
-modelFit</code></pre>
+modFit &lt;- train(classe ~ ., data=traindataPP, preProc = c(&quot;center&quot;,&quot;scale&quot;), method=&quot;rpart&quot;)
+modFit</code></pre>
 <pre><code>## CART 
 ## 
 ## 13737 samples
-##    59 predictor
+##    53 predictor
 ##     5 classes: 'A', 'B', 'C', 'D', 'E' 
 ## 
-## Pre-processing: centered (81), scaled (81) 
+## Pre-processing: centered (57), scaled (57) 
 ## Resampling: Bootstrapped (25 reps) 
 ## Summary of sample sizes: 13737, 13737, 13737, 13737, 13737, 13737, ... 
 ## Resampling results across tuning parameters:
 ## 
-##   cp         Accuracy   Kappa    
-##   0.2437188  0.7442245  0.6748985
-##   0.2568406  0.5426565  0.4156385
-##   0.2703692  0.3839361  0.1713665
+##   cp          Accuracy   Kappa     
+##   0.03387244  0.5121875  0.36605283
+##   0.06079409  0.4070778  0.19340626
+##   0.11463737  0.3361738  0.07872834
 ## 
 ## Accuracy was used to select the optimal model using  the largest value.
-## The final value used for the model was cp = 0.2437188.</code></pre>
-<p>The reached accuracy is 0.7442245 but it can be improved using a bagging technique</p>
-<pre class="r"><code>modelFit2 &lt;- train(classe ~ ., data=traindataPP, preProc = c(&quot;center&quot;, &quot;scale&quot;), method=&quot;treebag&quot;)
-modelFit2</code></pre>
+## The final value used for the model was cp = 0.03387244.</code></pre>
+<p>The reached accuracy is 0.5121875 but it can be improved using a bagging technique</p>
+<pre class="r"><code>modFit2 &lt;- train(classe ~ ., data=traindataPP, preProc = c(&quot;center&quot;, &quot;scale&quot;), method=&quot;treebag&quot;)
+modFit2</code></pre>
 <pre><code>## Bagged CART 
 ## 
 ## 13737 samples
-##    59 predictor
+##    53 predictor
 ##     5 classes: 'A', 'B', 'C', 'D', 'E' 
 ## 
-## Pre-processing: centered (81), scaled (81) 
+## Pre-processing: centered (57), scaled (57) 
 ## Resampling: Bootstrapped (25 reps) 
 ## Summary of sample sizes: 13737, 13737, 13737, 13737, 13737, 13737, ... 
 ## Resampling results:
 ## 
 ##   Accuracy   Kappa    
-##   0.9997784  0.9997197</code></pre>
-<p>The accuracy 0.9997784 is very good and it is not necessary using more sophisticated models like random forests or boosting models.</p>
+##   0.9785182  0.9728171</code></pre>
+<p>The accuracy 0.9785182 is very good and it is not necessary using more sophisticated models like random forests or boosting models.</p>
 </div>
 <div id="out-of-sample-error" class="section level3">
 <h3>Out of sample error</h3>
-<p>The out of sample error is estimated using the filtered cross-validation data</p>
-<pre class="r"><code>cvdataPP &lt;- cvdata[, column_select]</code></pre>
-<p>The predicted data is calculated for the single decision tree</p>
-<pre class="r"><code>predictdata &lt;- predict(modelFit, cvdataPP)</code></pre>
+<p>The out of sample error is estimated using the cross-validation data. The predicted data is calculated for the single decision tree</p>
+<pre class="r"><code>predictdata &lt;- predict(modFit, cvdata)</code></pre>
 <p>and the bagged tree model</p>
-<pre class="r"><code>predictdata2 &lt;- predict(modelFit2, cvdataPP)</code></pre>
+<pre class="r"><code>predictdata2 &lt;- predict(modFit2, cvdata)</code></pre>
 <p>Subsequently the out of sample error can be obtained from the accuracy values of the confusion matrix for the first</p>
-<pre class="r"><code>confmat &lt;- confusionMatrix(predictdata, cvdataPP$classe)
+<pre class="r"><code>confmat &lt;- confusionMatrix(predictdata, cvdata$classe)
 confmat$overall[1]</code></pre>
 <pre><code>##  Accuracy 
-## 0.6618522</code></pre>
+## 0.4956669</code></pre>
 <p>and the second model</p>
-<pre class="r"><code>confmat2 &lt;- confusionMatrix(predictdata2, cvdataPP$classe)
-confmat2$overall[1]</code></pre>
+<pre class="r"><code>confmat2 &lt;- confusionMatrix(predictdata2, cvdata$classe)
+confmat2</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 1663   17    1    2    0
+##          B    5 1115   13    3    4
+##          C    5    5 1001   19    6
+##          D    0    1    9  938    1
+##          E    1    1    2    2 1071
+## 
+## Overall Statistics
+##                                           
+##                Accuracy : 0.9835          
+##                  95% CI : (0.9799, 0.9866)
+##     No Information Rate : 0.2845          
+##     P-Value [Acc &gt; NIR] : &lt; 2e-16         
+##                                           
+##                   Kappa : 0.9791          
+##  Mcnemar's Test P-Value : 0.00644         
+## 
+## Statistics by Class:
+## 
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity            0.9934   0.9789   0.9756   0.9730   0.9898
+## Specificity            0.9953   0.9947   0.9928   0.9978   0.9988
+## Pos Pred Value         0.9881   0.9781   0.9662   0.9884   0.9944
+## Neg Pred Value         0.9974   0.9949   0.9948   0.9947   0.9977
+## Prevalence             0.2845   0.1935   0.1743   0.1638   0.1839
+## Detection Rate         0.2826   0.1895   0.1701   0.1594   0.1820
+## Detection Prevalence   0.2860   0.1937   0.1760   0.1613   0.1830
+## Balanced Accuracy      0.9943   0.9868   0.9842   0.9854   0.9943</code></pre>
+<pre class="r"><code>confmat2$overall[1]</code></pre>
 <pre><code>##  Accuracy 
-## 0.9998301</code></pre>
+## 0.9835174</code></pre>
 </div>
 </div>
 <div id="prediction" class="section level2">
 <h2>Prediction</h2>
 <p>Finally, the bagged tree model is used to predict the values of the 20 test cases from the “pmt-testing.csv” file.</p>
-<pre class="r"><code>testdataPP &lt;- testdata[, column_select]
-predictdata3 &lt;- predict(modelFit2, testdataPP)
+<pre class="r"><code>predictdata3 &lt;- predict(modFit2, testdata)
 predictdata3</code></pre>
-<pre><code>##  [1] A A A A A A A A A A A A A A A A A A A A
+<pre><code>##  [1] B A B A A E D B A A B C B A E E A B B B
 ## Levels: A B C D E</code></pre>
 </div>
 <div id="conclusions" class="section level2">
